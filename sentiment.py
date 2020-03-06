@@ -3,6 +3,11 @@ from textblob import TextBlob
 from nltk import word_tokenize
 import pandas as pd
 
+from time import time
+
+
+start = time()# Runtime
+
 data = pd.read_csv("MiFeedback_March 5, 2020_12.00.csv")
 res_col = data['Q3'].values
 #print(res_col, len(res_col)) # 46 responses
@@ -23,12 +28,19 @@ stop_words = set(stopwords.words('english'))
 
 from gensim import models
 # --- --- --- --- --- #
-new_model = models.Word2Vec.load('gutenburg_100v_3w_model.w2v')
+#new_model = models.Word2Vec.load('gutenburg_100v_3w_model.w2v')
 
+# wget -c "https://s3.amazonaws.com/dl4j-distribution/GoogleNews-vectors-negative300.bin.gz"
+# requires 6 minutes to load GoogleNews
+new_model = models.KeyedVectors.load_word2vec_format(
+    			'GoogleNews-vectors-negative300.bin', binary=True)
+            
+not_in_res = 0
 full_text = []
 similar_words = []
 for i, row in enumerate(res_col):
-		clean = re.sub("[^a-zA-Z]", " ", str(row))
+		clean = re.sub("[^a-zA-Z0-9]", " ", str(row))
+		res_col[i] = clean
 		clean = word_tokenize(clean.lower())
 		outs = []
 		for word in clean:
@@ -41,9 +53,11 @@ for i, row in enumerate(res_col):
 		except KeyError as e:
 			pass
 
+		
 		full_text.append(outs)
 
 full_text = full_text[2:] # Removing column headers
+res_col = [*["",""], *res_col[2:]]
 
 # Unpack lists containing each row of words
 # Into single list of all words
@@ -53,7 +67,7 @@ most_freq_words = dict(freq_dict.most_common(10))
 
 most_sim_words = dict(Counter(similar_words))#.most_common(10))
 
-for i, row in enumerate(res_col):
+for i, row in enumerate(res_col[2:]):
 
 	blob = TextBlob(row)
 
@@ -66,13 +80,18 @@ for i, row in enumerate(res_col):
 	if pol > 0.1:
 		pol_text = 'positive'
 	out_df['polarity_text'].append(pol_text)
-	tokens = re.sub("[^a-zA-Z]", " ", str(row))
-	tokens = word_tokenize(tokens.lower())
+
 
 	out_df['q3_text'].append(row)
 	out_df['row_idx'].append(i)
 
-	found = False
+	
+	tokens = re.sub("[^a-zA-Z]", " ", str(row))
+	tokens = word_tokenize(tokens.lower())
+
+	# Set category_by_word_frequency as most frequent word
+	# iff feedback response includes one of most frequent words
+	found = False # True if contains most freq word
 	for word in most_freq_words:
 		if word in tokens:
 			if found:
@@ -84,8 +103,19 @@ for i, row in enumerate(res_col):
 				found = True
 	if not found:
 		out_df['category_by_word_frequency'].append("")
-	sim_w = new_model.most_similar(tokens, topn=1) 
+
+	try:
+		sim_w = new_model.most_similar(tokens, topn=1) 
+	except KeyError as e:
+		print(e)
+		not_in_res += 1
+
 	out_df['category_by_sentiment'].append(sim_w)
+
+err = str(not_in_res) + ' out of ' + str(len(res_col[2:]))
+print("Num of responses with words not in word2vec model: ", err)
+
+print("Execution runtime ", (time() - start) / 60, " minutes")
 
 '''
 	 
@@ -104,6 +134,7 @@ for i, row in enumerate(res_col):
 	
 
 out_df = pd.DataFrame(out_df)
+out_df.to_csv("Created_Survey_Columns.csv", sep=',')
 
 data = pd.concat([data, out_df], axis=1)
 data.to_csv('Analyzed_Survey_Hacks2020.csv')
