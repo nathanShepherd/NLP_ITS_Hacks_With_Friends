@@ -15,8 +15,8 @@ res_col = data['Q3'].values
 out_df = {'row_idx':[], 'q3_text':[],
 		  'sentiment_polarity':[], 
 	  'polarity_text':[],
-		  'category_by_word_frequency':[],
-		  'category_by_sentiment':[]}
+		  'trending_words':[],
+		  'topics':[]}
 
 # --- --- --- --- --- #
 
@@ -28,12 +28,16 @@ stop_words = set(stopwords.words('english'))
 
 from gensim import models
 # --- --- --- --- --- #
-#new_model = models.Word2Vec.load('gutenburg_100v_3w_model.w2v')
+new_model = models.Word2Vec.load('gutenburg_100v_3w_model.w2v')
 
 # wget -c "https://s3.amazonaws.com/dl4j-distribution/GoogleNews-vectors-negative300.bin.gz"
 # requires 6 minutes to load GoogleNews
-new_model = models.KeyedVectors.load_word2vec_format(
-    			'GoogleNews-vectors-negative300.bin', binary=True)
+#new_model = models.word2vec.Word2Vec.load_word2vec_format(
+
+
+#    			'./word2vec-slim/google_wprd2vec_slim.bin', binary=True)
+#new_model = models.KeyedVectors.load_word2vec_format(
+    			#'GoogleNews-vectors-negative300.bin', binary=True)
             
 not_in_res = 0
 full_text = []
@@ -63,8 +67,10 @@ res_col = [*["",""], *res_col[2:]]
 # Into single list of all words
 full_text = [word for sent in full_text for word in sent]
 freq_dict = Counter(full_text)
-most_freq_words = dict(freq_dict.most_common(10))
+most_freq_words = dict(freq_dict.most_common(20))
 
+most_freq_words['get'] = 0
+most_freq_words['go'] = 0
 most_sim_words = dict(Counter(similar_words))#.most_common(10))
 
 for i, row in enumerate(res_col[2:]):
@@ -89,20 +95,20 @@ for i, row in enumerate(res_col[2:]):
 	tokens = re.sub("[^a-zA-Z]", " ", str(row))
 	tokens = word_tokenize(tokens.lower())
 
-	# Set category_by_word_frequency as most frequent word
+	# Set trending_words as most frequent word
 	# iff feedback response includes one of most frequent words
 	found = False # True if contains most freq word
 	for word in most_freq_words:
 		if word in tokens:
 			if found:
-				#print(i, word, most_freq_words, out_df['category_by_word_frequency'])
-				if most_freq_words[word] > most_freq_words[out_df['category_by_word_frequency'][i]]:
-					out_df['category_by_word_frequency'][i] = word
+				#print(i, word, most_freq_words, out_df['trending_words'])
+				if most_freq_words[word] > most_freq_words[out_df['trending_words'][i]]:
+					out_df['trending_words'][i] = word
 			else:
-				out_df['category_by_word_frequency'].append(word)
+				out_df['trending_words'].append(word)
 				found = True
 	if not found:
-		out_df['category_by_word_frequency'].append("")
+		out_df['trending_words'].append("")
 
 	try:
 		sim_w = new_model.most_similar(tokens, topn=1) 
@@ -110,8 +116,7 @@ for i, row in enumerate(res_col[2:]):
 		print(e)
 		not_in_res += 1
 
-	out_df['category_by_sentiment'].append(sim_w)
-
+	out_df['topics'].append(sim_w)
 err = str(not_in_res) + ' out of ' + str(len(res_col[2:]))
 print("Num of responses with words not in word2vec model: ", err)
 
@@ -122,14 +127,14 @@ print("Execution runtime ", (time() - start) / 60, " minutes")
 	for word in most_sim_words:
 		if word in tokens:
 			if found:
-				if most_sim_words[word] > most_sim_words[out_df['category_by_sentiment'][i]]:
-					out_df['category_by_sentiment'][i] = word
+				if most_sim_words[word] > most_sim_words[out_df['topics'][i]]:
+					out_df['topics'][i] = word
 			else:
-				out_df['category_by_sentiment'].append(word)
+				out_df['topics'].append(word)
 				found = True
 
 	if not found:
-		out_df['category_by_sentiment'].append("")
+		out_df['topics'].append("")
 '''
 	
 
